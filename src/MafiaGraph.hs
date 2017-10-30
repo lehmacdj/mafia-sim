@@ -8,11 +8,19 @@ import Data.List ((\\), delete)
 data Effect = Save
             | Kill
             | Oil
+            | Silence
             | Visit
             | Light
+            -- an edge that transfers one part of the graph to another
             | Trans
 
 data Rel a = R a Effect a
+
+-- I needed to use a graph representation for this as we need both directions of
+-- the graph and a Kleisli arrow based approach cannot give us that.
+-- Frobenius monads in the category Rel seem promising for getting back nice
+-- compositionality, but for now I just make a monoid instance which although
+-- slow is sufficient.
 newtype Segment a = S [Rel a]
 
 -- action parts only compose if one componenet is Trans
@@ -43,10 +51,20 @@ data Event a = Visiting a a
              | UseStrength a a -- this is a huge problem, how do we make sure
                                -- that strongman kills pierce through roleblocks
                                -- and interact properly with body guard
-             | Saving a a
+             | Saving a a -- currently our graph does not allow computing which
+                          -- players are saved and eliminating save/kill edges
+                          -- It would be nice to allow this
              | Roleblocking a a
+             | Distract a a -- Bard's action is also very hard to encode.
+                            -- we need to know a specific kill edge in order to
+                            -- evaluate it. an approach might be figuring out
+                            -- if an attack should happen after accumulating a
+                            -- graph of effects but this violates the fact that
+                            -- the attacker is only supposed to visit if they
+                            -- are not distracted by Bard
              | Swapping a a a
              | Oiling a a
+             | Silencing a a
              | LightUp a -- how do we know what players are lit, or do we defer
                          -- this information to a state table later
              | PerformRitual a
@@ -71,6 +89,7 @@ simple xs rs = A (identity xs) (S rs <> identity xs) (identity xs)
 interpret :: Eq a => [a] -> [Event a] -> Action a
 interpret xs (Visiting p q : ts) = simple xs [R p Visit q] <> interpret xs ts
 interpret xs (Killing p q : ts) = simple xs [R p Visit q, R p Kill q] <> interpret xs ts
+interpret xs (Silencing p q : ts) = simple xs [R p Visit q, R p Silence q] <> interpret xs ts
 interpret xs (Saving p q : ts) = simple xs [R p Visit q, R p Save q] <> interpret xs ts
 interpret xs (Roleblocking p q : ts) = block xs p q <> interpret xs ts
 interpret xs (Swapping p q r : ts) = swap xs p q r <> interpret xs ts
