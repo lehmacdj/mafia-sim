@@ -14,9 +14,10 @@ data Effect = Save
             | Visit
             | Tracked
             | Watched
-            | Light
-            -- an edge that transfers one part of the graph to another
-            | Trans [Effect]
+            | Light -- the semantics of this is to use up oil if it exists or
+                    -- otherwise act like a save
+            | Trans [Effect] -- an edge that transfers one part of the graph to
+                             -- another
             deriving (Eq)
 
 concreteEffects :: [Effect]
@@ -125,7 +126,7 @@ interpret xs (Saving p q : ts) = simple xs [R p Visit q, R p Save q] <> interpre
 interpret xs (Roleblocking p q : ts) = block xs p q <> interpret xs ts
 interpret xs (Swapping p q r : ts) = swap xs p q r <> interpret xs ts
 interpret xs (Oiling p q : ts) = simple xs [R p Oil q, R p Visit q] <> interpret xs ts
-interpret xs (LightUp p : ts) = simple xs (map (R p Light) xs) <> interpret xs ts
+interpret xs (LightUp p : ts) = simple xs ((\q -> [R p Kill q, R p Light q]) =<< xs) <> interpret xs ts
 interpret xs (PerformRitual p : ts) = simple xs (map (R p Save) xs) <> interpret xs ts
 interpret xs (Distract p q : ts) = distract xs p q <> interpret xs ts
 interpret xs (Track p q : ts) = simple xs [R p Tracked q] <> interpret xs ts
