@@ -89,18 +89,20 @@ identity :: [a] -> Segment a
 identity xs = S [ R x transAny x | x <- xs ]
 
 block :: Eq a => [a] -> a -> a -> Action a
-block ps p q = A r [R p Visit q] s where
-  r = identity (delete q ps)
-  s = identity ps
+block xs p q = A r [R p Visit q] s where
+  r = identity (delete q xs)
+  s = identity xs
 
 distract :: Eq a => [a] -> a -> a -> Action a
-distract ps p q = A r [R p Visit q] s where
-  r = identity (delete q ps) <> S [R q (Trans $ delete Kill concreteEffects) q]
-  s = identity ps
+distract xs p q = A r [R p Visit q] s where
+  r = S $ R q (Trans $ delete Kill concreteEffects) q : part
+  S part = identity (delete q xs)
+  s = identity xs
 
 swap :: Eq a => [a] -> a -> a -> a -> Action a
-swap ps p q r = A (identity ps) [R p Visit q, R p Visit r] s where
-  s = S [R q transAny r, R r transAny q] <> identity (ps \\ [q, r])
+swap xs p q r = A (identity xs) [R p Visit q, R p Visit r] s where
+  s = S $ R q transAny r : R r transAny q : part
+  S part = identity (xs \\ [q, r])
 
 simple :: Eq a => [a] -> [Rel a] -> Action a
 simple xs rs = A (identity xs) rs (identity xs)
