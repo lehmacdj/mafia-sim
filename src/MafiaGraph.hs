@@ -4,6 +4,8 @@ module MafiaGraph where
 
 import Data.Semigroup
 import Data.List ((\\), delete)
+import Data.Map (Map)
+import qualified Data.Map as Map
 
 data Effect = Save
             | Kill
@@ -13,6 +15,7 @@ data Effect = Save
             | Light
             -- an edge that transfers one part of the graph to another
             | Trans
+            deriving (Eq)
 
 data Rel a = R a Effect a
 
@@ -96,3 +99,15 @@ interpret xs (LightUp p : ts) = simple xs (map (R p Light) xs) <> interpret xs t
 interpret xs (PerformRitual p : ts) = simple xs (map (R p Save) xs) <> interpret xs ts
 interpret xs (Distract p q : ts) = undefined
 interpret xs (UseStrength p q : ts) = undefined
+
+-- get the effects attached to a specific player and the player that caused them
+runForward :: Ord a => [a] -> Action a -> Map a [(a, Effect)]
+runForward xs (A r a s) = Map.fromList l where
+  l = map (\q -> (q, [ (p, e) | R p e q' <- rs, q == q', e /= Trans])) xs
+  S rs = r <> S a <> s
+
+-- get the effects that a specific player performed and the affected players
+runReverse :: Ord a => [a] -> Action a -> Map a [(a, Effect)]
+runReverse xs (A r a s) = Map.fromList l where
+  l = map (\p -> (p, [ (q, e) | R p' e q <- rs, p == p', e /= Trans])) xs
+  S rs = r <> S a <> s
