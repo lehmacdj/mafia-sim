@@ -3,7 +3,7 @@
 module MafiaGraph where
 
 import Data.Semigroup
-import Data.List ((\\), delete)
+import Data.List ((\\), delete, intersect)
 import Data.Map (Map)
 import qualified Data.Map as Map
 
@@ -14,8 +14,18 @@ data Effect = Save
             | Visit
             | Light
             -- an edge that transfers one part of the graph to another
-            | Trans
+            | Trans [Effect]
             deriving (Eq)
+
+concreteEffects :: [Effect]
+concreteEffects = [Save, Kill, Oil, Silence, Visit, Light]
+
+transAny :: Effect
+transAny = Trans concreteEffects
+
+isTrans :: Effect -> Bool
+isTrans (Trans _) = True
+isTrans _ = False
 
 data Rel a = R a Effect a
 
@@ -28,11 +38,14 @@ newtype Segment a = S [Rel a]
 
 -- action parts only compose if one componenet is Trans
 compose :: Eq a => Rel a -> Rel a -> Maybe (Rel a)
-compose (R p Trans q) (R q' e r)
-  | q == q' = Just (R p e r)
+compose (R p (Trans es) q) (R q' (Trans es') r)
+  | q == q' = Just (R p (Trans $ es `intersect` es') r)
   | otherwise = Nothing
-compose (R p e q) (R q' Trans r)
-  | q == q' = Just (R p e r)
+compose (R p (Trans es) q) (R q' e r)
+  | q == q' && e `elem` es = Just (R p e r)
+  | otherwise = Nothing
+compose (R p e q) (R q' (Trans es) r)
+  | q == q' && e `elem` es = Just (R p e r)
   | otherwise = Nothing
 compose _ _ = Nothing
 
@@ -73,16 +86,21 @@ data Event a = Visiting a a
              | PerformRitual a
 
 identity :: [a] -> Segment a
-identity xs = S [ R x Trans x | x <- xs ]
+identity xs = S [ R x transAny x | x <- xs ]
 
 block :: Eq a => [a] -> a -> a -> Action a
 block ps p q = A r [R p Visit q] s where
   r = identity (delete q ps)
   s = identity ps
 
+distract :: Eq a => [a] -> a -> a -> Action a
+distract ps p q = A r [R p Visit q] s where
+  r = identity (delete q ps) <> S [R q (Trans $ delete Kill concreteEffects) q]
+  s = identity ps
+
 swap :: Eq a => [a] -> a -> a -> a -> Action a
 swap ps p q r = A (identity ps) [R p Visit q, R p Visit r] s where
-  s = S [R q Trans r, R r Trans q] <> identity (ps \\ [q, r])
+  s = S [R q transAny r, R r transAny q] <> identity (ps \\ [q, r])
 
 simple :: Eq a => [a] -> [Rel a] -> Action a
 simple xs rs = A (identity xs) rs (identity xs)
@@ -97,17 +115,17 @@ interpret xs (Swapping p q r : ts) = swap xs p q r <> interpret xs ts
 interpret xs (Oiling p q : ts) = simple xs [R p Oil q, R p Visit q] <> interpret xs ts
 interpret xs (LightUp p : ts) = simple xs (map (R p Light) xs) <> interpret xs ts
 interpret xs (PerformRitual p : ts) = simple xs (map (R p Save) xs) <> interpret xs ts
-interpret xs (Distract p q : ts) = undefined
+interpret xs (Distract p q : ts) = distract xs p q <> interpret xs ts
 interpret xs (UseStrength p q : ts) = undefined
 
 -- get the effects attached to a specific player and the player that caused them
 runForward :: Ord a => [a] -> Action a -> Map a [(a, Effect)]
 runForward xs (A r a s) = Map.fromList l where
-  l = map (\q -> (q, [ (p, e) | R p e q' <- rs, q == q', e /= Trans])) xs
+  l = map (\q -> (q, [ (p, e) | R p e q' <- rs, q == q', not $ isTrans e])) xs
   S rs = r <> S a <> s
 
 -- get the effects that a specific player performed and the affected players
 runReverse :: Ord a => [a] -> Action a -> Map a [(a, Effect)]
 runReverse xs (A r a s) = Map.fromList l where
-  l = map (\p -> (p, [ (q, e) | R p' e q <- rs, p == p', e /= Trans])) xs
+  l = map (\p -> (p, [ (q, e) | R p' e q <- rs, p == p', not $ isTrans e])) xs
   S rs = r <> S a <> s
