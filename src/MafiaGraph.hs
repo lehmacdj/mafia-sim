@@ -7,8 +7,7 @@ import Data.List ((\\), delete, intersect)
 import Data.Map (Map)
 import qualified Data.Map as Map
 
-data Effect = Save
-            | Kill
+data Effect = Kill
             | Oil
             | Silence
             | Visit
@@ -18,7 +17,7 @@ data Effect = Save
             deriving (Eq)
 
 concreteEffects :: [Effect]
-concreteEffects = [Save, Kill, Oil, Silence, Visit, Light]
+concreteEffects = [Kill, Oil, Silence, Visit, Light]
 
 transAny :: Effect
 transAny = Trans concreteEffects
@@ -57,10 +56,10 @@ instance Eq a => Semigroup (Segment a) where
     Just z <- [compose x y]
     pure z
 
-data Action a = A (Segment a) [Rel a] (Segment a)
+data Action a = A (Segment a) [Rel a] (Segment a) (Segment a)
 
 instance Eq a => Semigroup (Action a) where
-  A s1 s2 s3 <> A t1 t2 t3 = A (s1 <> t1) (s2 ++ t2) (s3 <> t3)
+  A s1 s2 s3 s4 <> A t1 t2 t3 t4 = A (s1 <> t1) (s2 ++ t2) (s3 <> t3) (s4 <> t4)
 
 data Event a = Visiting a a
              | Killing a a
@@ -89,43 +88,58 @@ identity :: [a] -> Segment a
 identity xs = S [ R x transAny x | x <- xs ]
 
 block :: Eq a => [a] -> a -> a -> Action a
-block ps p q = A r [R p Visit q] s where
-  r = identity (delete q ps)
-  s = identity ps
+block xs p q = A r [R p Visit q] i i where
+  r = identity (delete q xs)
+  i = identity xs
 
 distract :: Eq a => [a] -> a -> a -> Action a
-distract ps p q = A r [R p Visit q] s where
-  r = identity (delete q ps) <> S [R q (Trans $ delete Kill concreteEffects) q]
-  s = identity ps
+distract xs p q = A r [R p Visit q] i i where
+  r = identity (delete q xs) <> S [R q (Trans $ delete Kill concreteEffects) q]
+  i = identity xs
 
 swap :: Eq a => [a] -> a -> a -> a -> Action a
-swap ps p q r = A (identity ps) [R p Visit q, R p Visit r] s where
-  s = S [R q transAny r, R r transAny q] <> identity (ps \\ [q, r])
+swap xs p q r = A i [R p Visit q, R p Visit r] i s where
+  s = S $ [R q transAny r, R r transAny q] ++ part
+  S part = identity (xs \\ [q, r])
+  i = identity xs
 
 simple :: Eq a => [a] -> [Rel a] -> Action a
-simple xs rs = A (identity xs) rs (identity xs)
+simple xs rs = A i rs i i where
+  i = identity xs
+
+save :: Eq a => [a] -> a -> a -> Action a
+save xs p q = A i [R p Visit q] s i where
+  s = S $ R q (Trans $ delete Kill concreteEffects) q : part
+  S part = identity (delete q xs)
+  i = identity xs
+
+-- how can ritual be roleblocked with this semantics?
+ritual :: Eq a => [a] -> Action a
+ritual xs = A i [] s i where
+  i = identity xs
+  s = S [ R x (Trans $ delete Kill concreteEffects) x | x <- xs ]
 
 interpret :: Eq a => [a] -> [Event a] -> Action a
 interpret xs (Visiting p q : ts) = simple xs [R p Visit q] <> interpret xs ts
 interpret xs (Killing p q : ts) = simple xs [R p Visit q, R p Kill q] <> interpret xs ts
 interpret xs (Silencing p q : ts) = simple xs [R p Visit q, R p Silence q] <> interpret xs ts
-interpret xs (Saving p q : ts) = simple xs [R p Visit q, R p Save q] <> interpret xs ts
+interpret xs (Saving p q : ts) = save xs p q <> interpret xs ts
 interpret xs (Roleblocking p q : ts) = block xs p q <> interpret xs ts
 interpret xs (Swapping p q r : ts) = swap xs p q r <> interpret xs ts
 interpret xs (Oiling p q : ts) = simple xs [R p Oil q, R p Visit q] <> interpret xs ts
 interpret xs (LightUp p : ts) = simple xs (map (R p Light) xs) <> interpret xs ts
-interpret xs (PerformRitual p : ts) = simple xs (map (R p Save) xs) <> interpret xs ts
+interpret xs (PerformRitual p : ts) = ritual xs <> interpret xs ts
 interpret xs (Distract p q : ts) = distract xs p q <> interpret xs ts
 interpret xs (UseStrength p q : ts) = undefined
 
 -- get the effects attached to a specific player and the player that caused them
 runForward :: Ord a => [a] -> Action a -> Map a [(a, Effect)]
-runForward xs (A r a s) = Map.fromList l where
+runForward xs (A r a sa sw) = Map.fromList l where
   l = map (\q -> (q, [ (p, e) | R p e q' <- rs, q == q', not $ isTrans e])) xs
-  S rs = r <> S a <> s
+  S rs = r <> S a <> sa <> sw
 
 -- get the effects that a specific player performed and the affected players
 runReverse :: Ord a => [a] -> Action a -> Map a [(a, Effect)]
-runReverse xs (A r a s) = Map.fromList l where
+runReverse xs (A r a sa sw) = Map.fromList l where
   l = map (\p -> (p, [ (q, e) | R p' e q <- rs, p == p', not $ isTrans e])) xs
-  S rs = r <> S a <> s
+  S rs = r <> S a <> sa <> sw
