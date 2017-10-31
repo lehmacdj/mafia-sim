@@ -12,13 +12,15 @@ data Effect = Save
             | Oil
             | Silence
             | Visit
+            | Tracked
+            | Watched
             | Light
             -- an edge that transfers one part of the graph to another
             | Trans [Effect]
             deriving (Eq)
 
 concreteEffects :: [Effect]
-concreteEffects = [Save, Kill, Oil, Silence, Visit, Light]
+concreteEffects = [Save, Kill, Oil, Silence, Visit, Light, Tracked, Watched]
 
 transAny :: Effect
 transAny = Trans concreteEffects
@@ -80,6 +82,8 @@ data Event a = Visiting a a
                             -- are not distracted by Bard
              | Swapping a a a
              | Oiling a a
+             | Track a a
+             | Watch a a
              | Silencing a a
              | LightUp a -- how do we know what players are lit, or do we defer
                          -- this information to a state table later
@@ -124,6 +128,8 @@ interpret xs (Oiling p q : ts) = simple xs [R p Oil q, R p Visit q] <> interpret
 interpret xs (LightUp p : ts) = simple xs (map (R p Light) xs) <> interpret xs ts
 interpret xs (PerformRitual p : ts) = simple xs (map (R p Save) xs) <> interpret xs ts
 interpret xs (Distract p q : ts) = distract xs p q <> interpret xs ts
+interpret xs (Track p q : ts) = simple xs [R p Tracked q] <> interpret xs ts
+interpret xs (Watch p q : ts) = simple xs [R p Watched q] <> interpret xs ts
 interpret xs (UseStrength p q : ts) = undefined
 
 -- get the effects attached to a specific player and the player that caused them
