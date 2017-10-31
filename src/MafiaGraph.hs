@@ -99,6 +99,12 @@ distract xs p q = A r [R p Visit q] s where
   S part = identity (delete q xs)
   s = identity xs
 
+-- how do swaps get roleblocked in this model? right now there is no way for
+-- this to happen. Instead all swaps and roleblocks are guaranteed to happen.
+-- This needs to be remedied since swaps at the very least should be
+-- roleblockable in some kind of way. It might also be nice to make roleblocks
+-- roleblockable so that we can have exactly the same semantics as the mafia we
+-- play today.
 swap :: Eq a => [a] -> a -> a -> a -> Action a
 swap xs p q r = A (identity xs) [R p Visit q, R p Visit r] s where
   s = S $ R q transAny r : R r transAny q : part
