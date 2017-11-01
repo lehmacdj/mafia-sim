@@ -167,30 +167,30 @@ noKill :: [EAux Effect]
 noKill = concreteEffects \\ [Effect Kill]
 
 -- a folding function for a trace
-augment :: Eq a => [a] -> Event a -> Rel a -> Rel a
-augment xs (E x (ASimple a y)) ac = ac <> simple xs (edgesFromSA a x y)
-augment xs (E x (ASave y)) ac
+execute :: Eq a => [a] -> Event a -> Rel a -> Rel a
+execute xs (E x (ASimple a y)) ac = ac <> simple xs (edgesFromSA a x y)
+execute xs (E x (ASave y)) ac
   | canMutate x ac = ac <> save <@> R [edge Visit x y] where
     save = composeEdges noKill [y] <@> identity (xs \\ [y])
 -- roleblocking doesn't care if it is allowed to mutate
-augment xs (E x (ARoleblock y)) ac = roleblock <> ac <> visit xs x y where
+execute xs (E x (ARoleblock y)) ac = roleblock <> ac <> visit xs x y where
   roleblock = identity (xs \\ [y])
-augment xs (E x (ADistract y)) ac
+execute xs (E x (ADistract y)) ac
   | canMutate x ac = distract <> ac <> visit xs x y where
     distract = identity (xs \\ [y]) <@> composeEdges noKill [y]
-augment xs (E x ALight) ac = ac <> simple xs (f =<< xs) where
+execute xs (E x ALight) ac = ac <> simple xs (f =<< xs) where
   f y = [edge' (When Kill) Light x y, edge Kill x y]
-augment xs (E x ARitual) ac | canMutate x ac = ac <> composeEdges noKill xs
-augment xs (E x (ASwap y z)) ac
+execute xs (E x ARitual) ac | canMutate x ac = ac <> composeEdges noKill xs
+execute xs (E x (ASwap y z)) ac
   | canMutate x ac = ac <> swap <@> R [edge Visit x y, edge Visit x z] where
     swap = identity (xs \\ [y, z]) <@> swapEdge y z <@> swapEdge z y
-augment xs (E x (AGuard y)) ac
+execute xs (E x (AGuard y)) ac
   | canMutate x ac = ac <> guard' <@> R [edge Visit x y] where
     guard' = identity (xs \\ [y]) <@> swapEdge y x
-augment xs (E x (AStrength y)) ac = (simple xs k <> ac) <@> R sk where
+execute xs (E x (AStrength y)) ac = (simple xs k <> ac) <@> R sk where
   sk = [Edge (EAux StrongKill) x y]
   k = [edge Kill x y, edge' (When Kill) Visit x y]
-augment _ _ ac = ac
+execute _ _ ac = ac
 
 newtype TraceOrd a = TO { unTO :: Event a }
   deriving (Show)
@@ -250,5 +250,5 @@ instance Ord (TraceOrd a) where
 runTrace :: Ord a => [a] -> Trace a -> Result a
 runTrace xs = nub
   . getResult
-  . foldl (flip $ augment xs) (initial xs)
+  . foldl (flip $ execute xs) (initial xs)
   . map unTO . sort . map TO
