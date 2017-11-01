@@ -168,13 +168,15 @@ augment xs (E x (ASwap y z)) ac
 augment xs (E x (AGuard y)) ac
   | canMutate x ac = ac <> guard' <@> A [edge Visit x y] where
     guard' = identity (xs \\ [y]) <@> swapEdge y x
-augment xs (E x (AStrength y)) ac = undefined -- strong edge? how to strongman
+augment xs (E x (AStrength y)) ac = (ac <> simple xs killEdges) <@> A killEdges where
+  killEdges = [edge Kill x y, edge' (When Kill) Visit x y]
 augment _ _ ac = ac
 
 data Result a = Result
   { affectedByMap :: Map a [(a, Effect)]
   , effectingMap :: Map a [(a, Effect)]
   }
+  deriving (Eq, Show)
 
 runTrace :: Ord a => [a] -> Trace a -> Result a
 runTrace xs = uncurry Result
