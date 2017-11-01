@@ -17,7 +17,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     MafiaGraph
                      , Mafia.Types
-                     , Mafia.Trace
+                     , Mafia.Relation
   build-depends:       base >= 4.7 && < 5
                      , mtl
                      , random

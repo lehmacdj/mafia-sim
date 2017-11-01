@@ -1,4 +1,4 @@
-module Mafia.Types2 where
+module Mafia.Types where
 
 data SimpleAbility = AKill -- e.g. mafia
                    | AOil -- e.g. arsonist
