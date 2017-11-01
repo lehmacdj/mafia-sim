@@ -112,12 +112,12 @@ eliminateConditions xs = go xs where
 reduceEdges :: Eq a => Action a -> [(a, Effect, a)]
 reduceEdges = eliminateConditions . flattenEdges
 
-getAffected :: Ord a => [a] -> Action a -> Map a [(a, Effect)]
-getAffected xs a = Map.fromList l where
+getAffectedByMap :: Ord a => [a] -> Action a -> Map a [(a, Effect)]
+getAffectedByMap xs a = Map.fromList l where
   l = map (\q -> (q, [(p, e) | (p, e, q') <- reduceEdges a, q == q'])) xs
 
-getEffects :: Ord a => [a] -> Action a -> Map a [(a, Effect)]
-getEffects xs a = Map.fromList l where
+getEffectingMap :: Ord a => [a] -> Action a -> Map a [(a, Effect)]
+getEffectingMap xs a = Map.fromList l where
   l = map (\p -> (p, [(q, e) | (p', e, q) <- reduceEdges a, p == p'])) xs
 
 denoteSA :: SimpleAbility -> [CondEffect]
@@ -171,5 +171,12 @@ augment xs (E x (AGuard y)) ac
 augment xs (E x (AStrength y)) ac = undefined -- strong edge? how to strongman
 augment _ _ ac = ac
 
-runTrace :: Ord a => [a] -> Trace a -> (Map a [(a, Effect)], Map a [(a, Effect)])
-runTrace xs = (getAffected xs &&& getEffects xs) . foldr (augment xs) (initial xs)
+data Result a = Result
+  { affectedByMap :: Map a [(a, Effect)]
+  , effectingMap :: Map a [(a, Effect)]
+  }
+
+runTrace :: Ord a => [a] -> Trace a -> Result a
+runTrace xs = uncurry Result
+  . (getAffectedByMap xs &&& getEffectingMap xs)
+  . foldr (augment xs) (initial xs)
