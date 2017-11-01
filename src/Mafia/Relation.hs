@@ -6,7 +6,7 @@ module Mafia.Relation where
 import Mafia.Types
 
 import Control.Arrow
-import Data.List ((\\), intersect, sort, elemIndex)
+import Data.List ((\\), intersect, sort, elemIndex, nub)
 import Data.Semigroup
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -51,24 +51,29 @@ comp :: EAux CondEffect -> EAux Effect
 comp (Effect (When _ e)) = Effect e
 comp (Effect (Always e)) = Effect e
 comp CanMutate = CanMutate
+comp StrongKill = Effect Kill
 
-composeEdge :: Eq a => Edge a -> Edge a -> Maybe (Edge a)
-composeEdge (Edge e@(EAux StrongKill) p q) _ = Just $ Edge e p q
-composeEdge _ (Edge e@(EAux StrongKill) p q) = Just $ Edge e p q
+composeEdge :: Eq a => Edge a -> Edge a -> [Edge a]
 composeEdge (Edge e p q) (Edge e' q' r)
   | q == q' = case (e, e') of
-    (Compose es, Compose es') -> Just $ Edge (Compose $ es `intersect` es') p r
-    (Compose es, EAux e') | comp e' `elem` es -> Just $ Edge (EAux e') p r
-    (EAux e, Compose es') | comp e `elem` es' -> Just $ Edge (EAux e) p r
-    _ -> Nothing
-  | otherwise = Nothing
+    (Compose es, Compose es') -> pure $ Edge (Compose $ es `intersect` es') p r
+    (Compose es, EAux StrongKill) | Effect Kill `elem` es ->
+      Edge (EAux StrongKill) <$> [p,q] <*> [r]
+    (EAux StrongKill, Compose es) | Effect Kill `elem` es ->
+      Edge (EAux StrongKill) <$> [p] <*> [q,r]
+    (Compose es, EAux e') | comp e' `elem` es -> pure $ Edge (EAux e') p r
+    (EAux e, Compose es') | comp e `elem` es' -> pure $ Edge (EAux e) p r
+    _ -> []
+composeEdge (Edge e@(EAux StrongKill) p q) _ = pure $ Edge e p q
+composeEdge _ (Edge e@(EAux StrongKill) p q) = pure $ Edge e p q
+composeEdge _ _ = []
 
 newtype Rel a = R [Edge a]
   deriving (Eq, Show, Functor)
 
 -- horizontal composition of Rel is a semigroup
 instance Eq a => Semigroup (Rel a) where
-  R xs <> R ys = R [ z | x <- xs, y <- ys, Just z <- [composeEdge x y] ]
+  R xs <> R ys = R [ z | x <- xs, y <- ys, z <- composeEdge x y ]
 
 -- there is also however a notion of vertical composition that just adds
 -- stuff to the relation
@@ -243,6 +248,7 @@ instance Ord (TraceOrd a) where
     _ -> undefined
 
 runTrace :: Ord a => [a] -> Trace a -> Result a
-runTrace xs = getResult
+runTrace xs = nub
+  . getResult
   . foldl (flip $ augment xs) (initial xs)
   . map unTO . sort . map TO
