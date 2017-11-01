@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE TupleSections #-}
 
 module Mafia.Relation where
 
@@ -98,8 +99,14 @@ hasEffect e x (R es) = any (\z -> case z of
   Edge (EAux e') _ x' -> e == e' && x == x'
   _ -> False) es
 
-flattenEdges :: Rel a -> [(a, CondEffect, a)]
-flattenEdges (R rs) = [ (p, e, q) | Edge (EAux (Effect e)) p q <- rs ]
+flattenEdges :: Rel a -> [(a, EAux CondEffect, a)]
+flattenEdges (R rs) = [ (p, e, q) | Edge (EAux e) p q <- rs ]
+
+substituteStrongKill :: [(a, EAux CondEffect, a)] -> [(a, CondEffect, a)]
+substituteStrongKill = (>>= (\(p, e, q) -> (p,,q) <$> case e of
+  Effect e' -> [e']
+  StrongKill -> Always <$> [Visit, Kill]
+  _ -> []))
 
 rcond :: [(a, CondEffect, a)] -> [(a, Effect, a)]
 rcond xs = [ (p, e, q) | (p, Always e, q) <- xs ]
@@ -114,7 +121,7 @@ eliminateConditions xs = go xs where
   go ((p, Always e, q):ys) = (p, e, q) : go ys
 
 reduceEdges :: Eq a => Rel a -> [(a, Effect, a)]
-reduceEdges = eliminateConditions . flattenEdges
+reduceEdges = eliminateConditions . substituteStrongKill . flattenEdges
 
 getAffectedByMap :: Ord a => [a] -> Rel a -> Map a [(a, Effect)]
 getAffectedByMap xs a = Map.fromList l where
