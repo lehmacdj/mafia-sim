@@ -15,8 +15,7 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     MafiaGraph
-                     , Mafia.Types
+  exposed-modules:     Mafia.Types
                      , Mafia.Relation
   build-depends:       base >= 4.7 && < 5
                      , mtl
