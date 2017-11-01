@@ -1,9 +1,10 @@
 {-# LANGUAGE DeriveFunctor #-}
 
-module Mafia.Trace where
+module Mafia.Relation where
 
 import Mafia.Types
 
+import Control.Arrow
 import Data.List ((\\), intersect)
 import Data.Semigroup
 import Data.Map (Map)
@@ -45,6 +46,7 @@ composeAny = Edge $ Compose concreteEffects
 
 comp :: EAux CondEffect -> EAux Effect
 comp (Effect (When _ e)) = Effect e
+comp (Effect (Always e)) = Effect e
 comp CanMutate = CanMutate
 
 composeEdge :: Eq a => Edge a -> Edge a -> Maybe (Edge a)
@@ -93,24 +95,30 @@ hasEffect e x (A es) = any (\z -> case z of
   _ -> False) es
 
 flattenEdges :: Action a -> [(a, CondEffect, a)]
-flattenEdges (A rs) = [ (p, e, q) | Edge (EAux (Effect e)) p q ]
+flattenEdges (A rs) = [ (p, e, q) | Edge (EAux (Effect e)) p q <- rs ]
+
+rcond :: [(a, CondEffect, a)] -> [(a, Effect, a)]
+rcond xs = [ (p, e, q) | (p, Always e, q) <- xs ]
 
 eliminateConditions :: Eq a => [(a, CondEffect, a)] -> [(a, Effect, a)]
 eliminateConditions xs = go xs where
+  go [] = []
   go ((p, When e e', q):ys)
-    | (p, e, q) `elem` xs = (p, e', q) : go ys
+    -- we know based on the way we constructed conditions that this works
+    | (p, e, q) `elem` rcond xs = (p, e', q) : go ys
     | otherwise = go ys
   go ((p, Always e, q):ys) = (p, e, q) : go ys
 
+reduceEdges :: Eq a => Action a -> [(a, Effect, a)]
 reduceEdges = eliminateConditions . flattenEdges
 
 getAffected :: Ord a => [a] -> Action a -> Map a [(a, Effect)]
-getAffected xs (A rs) = Map.fromList l where
-  l = map (\q -> (q, [(p, e) | (p, e, q') <- reduceEdges rs, q == q'])) xs
+getAffected xs a = Map.fromList l where
+  l = map (\q -> (q, [(p, e) | (p, e, q') <- reduceEdges a, q == q'])) xs
 
 getEffects :: Ord a => [a] -> Action a -> Map a [(a, Effect)]
-getEffects xs (A rs) = Map.fromList l where
-  l = map (\p -> (p, [(q, e) | (p', e, q) <- reduceEdges rs, p == p'])) xs
+getEffects xs a = Map.fromList l where
+  l = map (\p -> (p, [(q, e) | (p', e, q) <- reduceEdges a, p == p'])) xs
 
 denoteSA :: SimpleAbility -> [CondEffect]
 denoteSA AKill = [Always Kill, When Kill Visit]
@@ -162,3 +170,6 @@ augment xs (E x (AGuard y)) ac
     guard' = identity (xs \\ [y]) <@> swapEdge y x
 augment xs (E x (AStrength y)) ac = undefined -- strong edge? how to strongman
 augment _ _ ac = ac
+
+runTrace :: Ord a => [a] -> Trace a -> (Map a [(a, Effect)], Map a [(a, Effect)])
+runTrace xs = (getAffected xs &&& getEffects xs) . foldr (augment xs) (initial xs)
