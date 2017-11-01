@@ -92,13 +92,25 @@ hasEffect e x (A es) = any (\z -> case z of
   Edge (EAux e') _ x' -> e == e' && x == x'
   _ -> False) es
 
-getAffected :: Ord a => [a] -> Action a -> Map a [(a, CondEffect)]
-getAffected xs (A rs) = Map.fromList l where
-  l = map (\q -> (q, [(p, e) | Edge (EAux (Effect e)) p q' <- rs, q == q'])) xs
+flattenEdges :: Action a -> [(a, CondEffect, a)]
+flattenEdges (A rs) = [ (p, e, q) | Edge (EAux (Effect e)) p q ]
 
-getEffects :: Ord a => [a] -> Action a -> Map a [(a, CondEffect)]
+eliminateConditions :: Eq a => [(a, CondEffect, a)] -> [(a, Effect, a)]
+eliminateConditions xs = go xs where
+  go ((p, When e e', q):ys)
+    | (p, e, q) `elem` xs = (p, e', q) : go ys
+    | otherwise = go ys
+  go ((p, Always e, q):ys) = (p, e, q) : go ys
+
+reduceEdges = eliminateConditions . flattenEdges
+
+getAffected :: Ord a => [a] -> Action a -> Map a [(a, Effect)]
+getAffected xs (A rs) = Map.fromList l where
+  l = map (\q -> (q, [(p, e) | (p, e, q') <- reduceEdges rs, q == q'])) xs
+
+getEffects :: Ord a => [a] -> Action a -> Map a [(a, Effect)]
 getEffects xs (A rs) = Map.fromList l where
-  l = map (\p -> (p, [(q, e) | Edge (EAux (Effect e)) p' q <- rs, p == p'])) xs
+  l = map (\p -> (p, [(q, e) | (p', e, q) <- reduceEdges rs, p == p'])) xs
 
 denoteSA :: SimpleAbility -> [CondEffect]
 denoteSA AKill = [Always Kill, When Kill Visit]
